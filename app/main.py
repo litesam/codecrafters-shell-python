@@ -53,6 +53,8 @@ class CD(BuiltIn):
         path = args.strip() or os.environ.get("HOME", "")
         try:
             os.chdir(path)
+        except FileNotFoundError:
+            print(f"cd: {path}: No such file or directory", file=os.sys.stderr)
         except Exception as e:
             print(f"cd: {path}: {e}", file=os.sys.stderr)
 

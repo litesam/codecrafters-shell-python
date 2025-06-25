@@ -1,8 +1,8 @@
 import os
 import shlex
 import subprocess
+import shutil
 from typing import Tuple, List
-
 
 class BuiltIn:
     def execute(self, args: str = ""):
@@ -50,15 +50,20 @@ class PWD(BuiltIn):
 
 class CD(BuiltIn):
     def execute(self, args: str = ""):
-        path = args.strip() or os.environ.get("HOME", "")
+        path = args.strip()
+
         if path == "~":
-            path = os.environ.get("HOME")
+            path = os.environ.get("HOME", "")
+
+        if not path:
+            return
+
         try:
             os.chdir(path)
         except FileNotFoundError:
-            print(f"cd: {path}: No such file or directory", file=os.sys.stderr)
+            print(f"cd: {args}: No such file or directory", file=os.sys.stderr)
         except Exception as e:
-            print(f"cd: {path}: {e}", file=os.sys.stderr)
+            print(f"cd: {args}: {e}", file=os.sys.stderr)
 
     def __str__(self):
         return "cd: a shell builtin that changes the current directory"
@@ -71,9 +76,8 @@ class TypeExplain(BuiltIn):
             return
 
         for token in shlex.split(args):
-            if BuiltinFactory.is_builtin(token):
-                builtin = BuiltinFactory.create(token)
-                print(str(builtin))
+            if token in ['exit', 'pwd', 'cd', 'type', 'echo']:
+                print(token, 'is a shell builtin')
             else:
                 path = self.find_in_path(token)
                 if path:
@@ -94,7 +98,7 @@ class TypeExplain(BuiltIn):
 
 BuiltinFactory.builtins = {
     "exit": Exit,
-    "echo": Echo,
+    # "echo": Echo,
     "pwd": PWD,
     "cd": CD,
     "type": TypeExplain,
@@ -102,49 +106,69 @@ BuiltinFactory.builtins = {
 
 
 def parse_input(input_str: str) -> Tuple[str, str, List[str]]:
-    tokens = shlex.split(input_str)
+    tokens = shlex.split(input_str, posix=True)
     command = tokens[0] if tokens else ""
     args = " ".join(tokens[1:])
     return command, args, tokens
 
-
 def run_external_command(input_str: str):
-    command, args, tokens = parse_input(input_str)
+    # Detect and handle output redirection
+    if ">" in input_str:
+        # Handle both "1> file" and "> file"
+        if "1>" in input_str:
+            parts = input_str.split("1>")
+        else:
+            parts = input_str.split(">")
 
-    if not command:
-        return
+        cmd_part = parts[0].strip()
+        file_part = parts[1].strip() if len(parts) > 1 else ""
 
-    path = shutil.which(command)
-    if not path:
-        print(f"{command}: command not found")
-        return
+        # Parse the command part
+        command, args, tokens = parse_input(cmd_part)
+        if not command:
+            return
 
-    try:
-        subprocess.run(tokens)
-    except Exception as e:
-        print(f"Error: {e}")
+        path = shutil.which(command)
+        if not path:
+            print(f"{command}: command not found")
+            return
 
+        try:
+            with open(file_part, "w") as f:
+                subprocess.run(tokens, stdout=f, stderr=None)
+        except Exception as e:
+            print(f"Error: {e}")
+    else:
+        # No redirection, just execute normally
+        command, args, tokens = parse_input(input_str)
+        if not command:
+            return
 
+        path = shutil.which(command)
+        if not path:
+            print(f"{command}: command not found")
+            return
+
+        try:
+            subprocess.run(tokens)
+        except Exception as e:
+            print(f"Error: {e}")
+
+# Shell loop
 if __name__ == '__main__':
-    import shutil
-
     while True:
         try:
             input_str = input("$ ").strip()
             if not input_str:
                 continue
-
-            command, args, tokens = parse_input(input_str)
-
+            [command, args, tokens] = parse_input(input_str)
             if BuiltinFactory.is_builtin(command):
                 builtin = BuiltinFactory.create(command)
                 if builtin:
                     builtin.execute(args)
             else:
                 run_external_command(input_str)
-
         except EOFError:
             break
         except KeyboardInterrupt:
             print()
-

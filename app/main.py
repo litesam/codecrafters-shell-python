@@ -115,23 +115,44 @@ def run_external_command(input_str: str):
     # Detect and handle output redirection
     stdout_file = None
     stderr_file = None
+    stdout_append = False
+    stderr_append = False
     
-    # Check for stderr redirection (2>)
-    if "2>" in input_str:
+    # Check for stderr redirection (2>> or 2>)
+    if "2>>" in input_str:
+        parts = input_str.split("2>>")
+        cmd_part = parts[0].strip()
+        stderr_file = parts[1].strip() if len(parts) > 1 else ""
+        stderr_append = True
+        input_str = cmd_part  # Continue processing for potential stdout redirection
+    elif "2>" in input_str:
         parts = input_str.split("2>")
         cmd_part = parts[0].strip()
         stderr_file = parts[1].strip() if len(parts) > 1 else ""
+        stderr_append = False
         input_str = cmd_part  # Continue processing for potential stdout redirection
     
-    # Check for stdout redirection (1> or >)
-    if "1>" in input_str:
+    # Check for stdout redirection (1>> or 1> or >> or >)
+    if "1>>" in input_str:
+        parts = input_str.split("1>>")
+        cmd_part = parts[0].strip()
+        stdout_file = parts[1].strip() if len(parts) > 1 else ""
+        stdout_append = True
+    elif "1>" in input_str:
         parts = input_str.split("1>")
         cmd_part = parts[0].strip()
         stdout_file = parts[1].strip() if len(parts) > 1 else ""
+        stdout_append = False
+    elif ">>" in input_str:
+        parts = input_str.split(">>")
+        cmd_part = parts[0].strip()
+        stdout_file = parts[1].strip() if len(parts) > 1 else ""
+        stdout_append = True
     elif ">" in input_str:
         parts = input_str.split(">")
         cmd_part = parts[0].strip()
         stdout_file = parts[1].strip() if len(parts) > 1 else ""
+        stdout_append = False
     else:
         cmd_part = input_str
     
@@ -151,9 +172,9 @@ def run_external_command(input_str: str):
         stderr_handle = None
         
         if stdout_file:
-            stdout_handle = open(stdout_file, "w")
+            stdout_handle = open(stdout_file, "a" if stdout_append else "w")
         if stderr_file:
-            stderr_handle = open(stderr_file, "w")
+            stderr_handle = open(stderr_file, "a" if stderr_append else "w")
         
         # Run the command with appropriate redirections
         subprocess.run(tokens, 

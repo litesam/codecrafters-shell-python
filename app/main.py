@@ -113,46 +113,61 @@ def parse_input(input_str: str) -> Tuple[str, str, List[str]]:
 
 def run_external_command(input_str: str):
     # Detect and handle output redirection
-    if ">" in input_str:
-        # Handle both "1> file" and "> file"
-        if "1>" in input_str:
-            parts = input_str.split("1>")
-        else:
-            parts = input_str.split(">")
-
+    stdout_file = None
+    stderr_file = None
+    
+    # Check for stderr redirection (2>)
+    if "2>" in input_str:
+        parts = input_str.split("2>")
         cmd_part = parts[0].strip()
-        file_part = parts[1].strip() if len(parts) > 1 else ""
-
-        # Parse the command part
-        command, args, tokens = parse_input(cmd_part)
-        if not command:
-            return
-
-        path = shutil.which(command)
-        if not path:
-            print(f"{command}: command not found")
-            return
-
-        try:
-            with open(file_part, "w") as f:
-                subprocess.run(tokens, stdout=f, stderr=None)
-        except Exception as e:
-            print(f"Error: {e}")
+        stderr_file = parts[1].strip() if len(parts) > 1 else ""
+        input_str = cmd_part  # Continue processing for potential stdout redirection
+    
+    # Check for stdout redirection (1> or >)
+    if "1>" in input_str:
+        parts = input_str.split("1>")
+        cmd_part = parts[0].strip()
+        stdout_file = parts[1].strip() if len(parts) > 1 else ""
+    elif ">" in input_str:
+        parts = input_str.split(">")
+        cmd_part = parts[0].strip()
+        stdout_file = parts[1].strip() if len(parts) > 1 else ""
     else:
-        # No redirection, just execute normally
-        command, args, tokens = parse_input(input_str)
-        if not command:
-            return
-
-        path = shutil.which(command)
-        if not path:
-            print(f"{command}: command not found")
-            return
-
-        try:
-            subprocess.run(tokens)
-        except Exception as e:
-            print(f"Error: {e}")
+        cmd_part = input_str
+    
+    # Parse the command part
+    command, args, tokens = parse_input(cmd_part)
+    if not command:
+        return
+    
+    path = shutil.which(command)
+    if not path:
+        print(f"{command}: command not found")
+        return
+    
+    try:
+        # Handle file redirections
+        stdout_handle = None
+        stderr_handle = None
+        
+        if stdout_file:
+            stdout_handle = open(stdout_file, "w")
+        if stderr_file:
+            stderr_handle = open(stderr_file, "w")
+        
+        # Run the command with appropriate redirections
+        subprocess.run(tokens, 
+                      stdout=stdout_handle if stdout_handle else None,
+                      stderr=stderr_handle if stderr_handle else None)
+        
+        # Close file handles
+        if stdout_handle:
+            stdout_handle.close()
+        if stderr_handle:
+            stderr_handle.close()
+            
+    except Exception as e:
+        print(f"Error: {e}")
 
 # Shell loop
 if __name__ == '__main__':

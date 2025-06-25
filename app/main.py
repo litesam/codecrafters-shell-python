@@ -51,6 +51,8 @@ class PWD(BuiltIn):
 class CD(BuiltIn):
     def execute(self, args: str = ""):
         path = args.strip() or os.environ.get("HOME", "")
+        if path == "~":
+            path = os.environ.get("HOME")
         try:
             os.chdir(path)
         except FileNotFoundError:

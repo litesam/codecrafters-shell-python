@@ -8,6 +8,7 @@ import signal
 
 last_completion_text = ""
 completion_count = 0
+command_history = []
 
 def get_executable_commands(text: str) -> List[str]:
     commands = []
@@ -210,6 +211,7 @@ BuiltinFactory.builtins = {
     "pwd": PWD,
     "cd": CD,
     "type": TypeExplain,
+    "history": History
 }
 
 
@@ -515,6 +517,7 @@ if __name__ == '__main__':
             input_str = input("$ ").strip()
             if not input_str:
                 continue
+            command_history.append(input_str)
             
             # Check if this is a pipeline first
             if '|' in input_str:

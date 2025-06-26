@@ -5,14 +5,39 @@ import shutil
 from typing import Tuple, List
 import readline
 
+def get_executable_commands(text: str) -> List[str]:
+    commands = []
+    path_env = os.environ.get('PATH', '')
+    if not path_env:
+        return commands
+    path_dirs = path_env.split(os.pathsep)
+    
+    for path_dir in path_dirs:
+        if not os.path.isdir(path_dir):
+            continue
+            
+        try:
+            for filename in os.listdir(path_dir):
+                if filename.startswith(text):
+                    full_path = os.path.join(path_dir, filename)
+                    if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                        if filename not in commands:
+                            commands.append(filename)
+        except (OSError, PermissionError):
+            continue
+    
+    return sorted(commands)
+
 def complete_builtin(text, state):
     builtins = ['echo', 'exit']
-    matches = []
-    for cmd in builtins:
-        if cmd.startswith(text):
-            matches.append(cmd+' ')
-    if state < len(matches):
-        return matches[state]
+    builtin_matches = [cmd for cmd in builtins if cmd.startswith(text)]
+    external_matches = get_executable_commands(text)
+    # print('here3')
+    all_matches = builtin_matches + external_matches
+    # print('here4', all_matches)
+    # print(builtlin_matches, external_matches)
+    if state < len(all_matches):
+        return all_matches[state] + ' '
     return None
 
 def setup_readline():

@@ -3,6 +3,23 @@ import shlex
 import subprocess
 import shutil
 from typing import Tuple, List
+import readline
+
+def complete_builtin(text, state):
+    builtins = ['echo', 'exit']
+    matches = []
+    for cmd in builtins:
+        if cmd.startswith(text):
+            matches.append(cmd+' ')
+    if state < len(matches):
+        return matches[state]
+    return None
+
+def setup_readline():
+    readline.set_completer(complete_builtin)
+    readline.parse_and_bind('tab: complete')
+    readline.set_completer_delims(' \t\n`!@#$%^&*()=+[{]}\\|;:\'",<>?')
+    readline.set_completion_display_matches_hook(None)
 
 class BuiltIn:
     def execute(self, args: str = ""):
@@ -192,6 +209,7 @@ def run_external_command(input_str: str):
 
 # Shell loop
 if __name__ == '__main__':
+    setup_readline()
     while True:
         try:
             input_str = input("$ ").strip()

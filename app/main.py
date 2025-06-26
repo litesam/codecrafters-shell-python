@@ -38,6 +38,31 @@ def get_all_matches(text):
     # print(builtin_matches + external_matches)
     return builtin_matches + external_matches
 
+def find_common_prefix(strings: List[str]) -> str:
+    if not strings:
+        return ""
+    
+    if len(strings) == 1:
+        return strings[0]
+    
+    prefix = strings[0]
+    for string in strings[1:]:
+        common_len = 0
+        min_len = min(len(prefix), len(string))
+        
+        for i in range(min_len):
+            if prefix[i] == string[i]:
+                common_len += 1
+            else:
+                break
+        
+        prefix = prefix[:common_len]
+        
+        if not prefix:
+            break
+    
+    return prefix
+
 def complete_builtin(text, state):
     global last_completion_text, completion_count
     if text != last_completion_text or state == 0:
@@ -54,6 +79,9 @@ def complete_builtin(text, state):
     if len(all_matches) > 1:
         if state == 0:
             completion_count += 1
+            common_prefix = find_common_prefix(all_matches)
+            if len(common_prefix) > len(text):
+                return common_prefix
             if completion_count == 1:
                 print('\a', end='')
                 return None

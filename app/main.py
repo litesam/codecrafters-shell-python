@@ -174,7 +174,7 @@ class TypeExplain(BuiltIn):
             return
 
         for token in shlex.split(args):
-            if token in ['exit', 'pwd', 'cd', 'type', 'echo']:
+            if token in ['exit', 'pwd', 'cd', 'type', 'echo', 'history']:
                 print(token, 'is a shell builtin')
             else:
                 path = self.find_in_path(token)
@@ -192,6 +192,16 @@ class TypeExplain(BuiltIn):
 
     def __str__(self):
         return "type is a shell builtin"
+
+
+class History(BuiltIn):
+    def execute(self, args: str = ""):
+        global command_history
+        for i, cmd in enumerate(command_history, 1):
+            print(f"    {i}  {cmd}")
+
+    def __str__(self):
+        return "history is a shell builtin"
 
 
 BuiltinFactory.builtins = {

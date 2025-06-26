@@ -4,6 +4,7 @@ import subprocess
 import shutil
 from typing import Tuple, List
 import readline
+import signal
 
 last_completion_text = ""
 completion_count = 0
@@ -208,7 +209,171 @@ def parse_input(input_str: str) -> Tuple[str, str, List[str]]:
     args = " ".join(tokens[1:])
     return command, args, tokens
 
-def run_external_command(input_str: str):
+def parse_pipeline(input_str: str) -> List[str]:
+    """Parse a command string into pipeline components."""
+    # Split by pipe, but handle quoted strings properly
+    commands = []
+    current_cmd = ""
+    in_quotes = False
+    quote_char = None
+    
+    i = 0
+    while i < len(input_str):
+        char = input_str[i]
+        
+        if char in ['"', "'"] and not in_quotes:
+            in_quotes = True
+            quote_char = char
+            current_cmd += char
+        elif char == quote_char and in_quotes:
+            in_quotes = False
+            quote_char = None
+            current_cmd += char
+        elif char == '|' and not in_quotes:
+            commands.append(current_cmd.strip())
+            current_cmd = ""
+        else:
+            current_cmd += char
+        
+        i += 1
+    
+    if current_cmd.strip():
+        commands.append(current_cmd.strip())
+    
+    return commands
+
+def execute_builtin_in_pipeline(command: str, args: str, stdin_fd=None, stdout_fd=None):
+    """Execute a builtin command in a pipeline context."""
+    pid = os.fork()
+    if pid == 0:  # Child process
+        # Set up input redirection
+        if stdin_fd is not None:
+            os.dup2(stdin_fd, 0)
+        
+        # Set up output redirection
+        if stdout_fd is not None:
+            os.dup2(stdout_fd, 1)
+        
+        # Execute the builtin command
+        builtin = BuiltinFactory.create(command)
+        if builtin:
+            builtin.execute(args)
+        
+        os._exit(0)
+    else:  # Parent process
+        return pid
+
+def execute_pipeline(commands: List[str]):
+    """Execute a pipeline of commands."""
+    if len(commands) == 1:
+        # Single command, no pipeline - handle normally
+        run_single_command(commands[0])
+        return
+    
+    # Create pipes for the pipeline
+    pipes = []
+    for i in range(len(commands) - 1):
+        r_fd, w_fd = os.pipe()
+        pipes.append((r_fd, w_fd))
+    
+    processes = []
+    
+    try:
+        for i, cmd in enumerate(commands):
+            # Parse the command
+            command, args, tokens = parse_input(cmd)
+            
+            # Determine input and output file descriptors
+            stdin_fd = pipes[i-1][0] if i > 0 else None
+            stdout_fd = pipes[i][1] if i < len(commands) - 1 else None
+            
+            # Check if it's a builtin command
+            if BuiltinFactory.is_builtin(command):
+                pid = execute_builtin_in_pipeline(command, args, stdin_fd, stdout_fd)
+                processes.append(pid)
+                continue
+            
+            # Find the executable for external commands
+            path = shutil.which(command)
+            if not path:
+                print(f"{command}: command not found")
+                # Clean up pipes and processes
+                for r_fd, w_fd in pipes:
+                    try:
+                        os.close(r_fd)
+                        os.close(w_fd)
+                    except:
+                        pass
+                for pid in processes:
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                        os.waitpid(pid, 0)
+                    except:
+                        pass
+                return
+            
+            # Fork a process for external commands
+            pid = os.fork()
+            if pid == 0:  # Child process
+                # Set up input redirection
+                if stdin_fd is not None:
+                    os.dup2(stdin_fd, 0)
+                
+                # Set up output redirection
+                if stdout_fd is not None:
+                    os.dup2(stdout_fd, 1)
+                
+                # Close all pipe file descriptors in child
+                for r_fd, w_fd in pipes:
+                    try:
+                        os.close(r_fd)
+                        os.close(w_fd)
+                    except:
+                        pass
+                
+                # Execute the command
+                try:
+                    os.execv(path, tokens)
+                except Exception as e:
+                    print(f"Error executing {command}: {e}")
+                    os._exit(1)
+            else:  # Parent process
+                processes.append(pid)
+        
+        # Close all pipe file descriptors in parent
+        for r_fd, w_fd in pipes:
+            try:
+                os.close(r_fd)
+                os.close(w_fd)
+            except:
+                pass
+        
+        # Wait for all processes to complete
+        for pid in processes:
+            try:
+                os.waitpid(pid, 0)
+            except OSError:
+                # Process might have already exited
+                pass
+                
+    except Exception as e:
+        print(f"Pipeline error: {e}")
+        # Clean up on error
+        for r_fd, w_fd in pipes:
+            try:
+                os.close(r_fd)
+                os.close(w_fd)
+            except:
+                pass
+        for pid in processes:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                os.waitpid(pid, 0)
+            except:
+                pass
+
+def run_single_command(input_str: str):
+    """Run a single command with redirection support."""
     # Detect and handle output redirection
     stdout_file = None
     stderr_file = None
@@ -258,6 +423,42 @@ def run_external_command(input_str: str):
     if not command:
         return
     
+    # Handle builtin commands
+    if BuiltinFactory.is_builtin(command):
+        # For builtin commands with redirection, we need to handle file redirection
+        original_stdout = None
+        original_stderr = None
+        
+        try:
+            # Handle file redirections for builtins
+            if stdout_file:
+                original_stdout = os.dup(1)  # Save original stdout
+                stdout_handle = open(stdout_file, "a" if stdout_append else "w")
+                os.dup2(stdout_handle.fileno(), 1)  # Redirect stdout
+                stdout_handle.close()
+            
+            if stderr_file:
+                original_stderr = os.dup(2)  # Save original stderr
+                stderr_handle = open(stderr_file, "a" if stderr_append else "w")
+                os.dup2(stderr_handle.fileno(), 2)  # Redirect stderr
+                stderr_handle.close()
+            
+            # Execute the builtin
+            builtin = BuiltinFactory.create(command)
+            if builtin:
+                builtin.execute(args)
+                
+        finally:
+            # Restore original stdout/stderr
+            if original_stdout is not None:
+                os.dup2(original_stdout, 1)
+                os.close(original_stdout)
+            if original_stderr is not None:
+                os.dup2(original_stderr, 2)
+                os.close(original_stderr)
+        return
+    
+    # Handle external commands
     path = shutil.which(command)
     if not path:
         print(f"{command}: command not found")
@@ -287,6 +488,13 @@ def run_external_command(input_str: str):
     except Exception as e:
         print(f"Error: {e}")
 
+def run_external_command(input_str: str):
+    if '|' in input_str:
+        commands = parse_pipeline(input_str)
+        execute_pipeline(commands)
+    else:
+        run_single_command(input_str)
+
 # Shell loop
 if __name__ == '__main__':
     setup_readline()
@@ -297,13 +505,19 @@ if __name__ == '__main__':
             input_str = input("$ ").strip()
             if not input_str:
                 continue
-            [command, args, tokens] = parse_input(input_str)
-            if BuiltinFactory.is_builtin(command):
-                builtin = BuiltinFactory.create(command)
-                if builtin:
-                    builtin.execute(args)
-            else:
+            
+            # Check if this is a pipeline first
+            if '|' in input_str:
                 run_external_command(input_str)
+            else:
+                # Parse for single commands
+                [command, args, tokens] = parse_input(input_str)
+                if BuiltinFactory.is_builtin(command):
+                    builtin = BuiltinFactory.create(command)
+                    if builtin:
+                        builtin.execute(args)
+                else:
+                    run_external_command(input_str)
         except EOFError:
             break
         except KeyboardInterrupt:

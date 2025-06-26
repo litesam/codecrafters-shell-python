@@ -5,6 +5,9 @@ import shutil
 from typing import Tuple, List
 import readline
 
+last_completion_text = ""
+completion_count = 0
+
 def get_executable_commands(text: str) -> List[str]:
     commands = []
     path_env = os.environ.get('PATH', '')
@@ -28,23 +31,47 @@ def get_executable_commands(text: str) -> List[str]:
     
     return sorted(commands)
 
-def complete_builtin(text, state):
-    builtins = ['echo', 'exit']
+def get_all_matches(text):
+    builtins = ['exit']
     builtin_matches = [cmd for cmd in builtins if cmd.startswith(text)]
     external_matches = get_executable_commands(text)
-    # print('here3')
-    all_matches = builtin_matches + external_matches
-    # print('here4', all_matches)
-    # print(builtlin_matches, external_matches)
-    if state < len(all_matches):
-        return all_matches[state] + ' '
+    # print(builtin_matches + external_matches)
+    return builtin_matches + external_matches
+
+def complete_builtin(text, state):
+    global last_completion_text, completion_count
+    if text != last_completion_text or state == 0:
+        if text != last_completion_text:
+            completion_count = 0
+        last_completion_text = text
+    all_matches = get_all_matches(text)
+    if not all_matches:
+        return None
+    if len(all_matches) == 1:
+        if state == 0:
+            return all_matches[0] + ' '
+        return None
+    if len(all_matches) > 1:
+        if state == 0:
+            completion_count += 1
+            if completion_count == 1:
+                print('\a', end='')
+                return None
+            elif completion_count == 2:
+                print()
+                print('  '.join(all_matches))
+                print('$ ' + text, end='')
+                return None
+        return None
     return None
 
 def setup_readline():
     readline.set_completer(complete_builtin)
     readline.parse_and_bind('tab: complete')
     readline.set_completer_delims(' \t\n`!@#$%^&*()=+[{]}\\|;:\'",<>?')
-    readline.set_completion_display_matches_hook(None)
+    readline.parse_and_bind('set show-all-if-ambiguous off')
+    readline.parse_and_bind('set completion-query-items -1')
+
 
 class BuiltIn:
     def execute(self, args: str = ""):
@@ -237,6 +264,8 @@ if __name__ == '__main__':
     setup_readline()
     while True:
         try:
+            last_completion_text = ""
+            completion_count = 0
             input_str = input("$ ").strip()
             if not input_str:
                 continue

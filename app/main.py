@@ -5,6 +5,7 @@ import shutil
 from typing import Tuple, List
 import readline
 import signal
+import atexit
 
 last_completion_text = ""
 completion_count = 0
@@ -511,8 +512,29 @@ def run_external_command(input_str: str):
     else:
         run_single_command(input_str)
 
+def load_history_from_file():
+    global command_history
+    histfile = os.environ.get('HISTFILE')
+    if histfile and os.path.exists(histfile):
+        with open(histfile, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    command_history.append(line)
+                    readline.add_history(line)
+
+def save_history_to_file():
+    global command_history
+    histfile = os.environ.get('HISTFILE')
+    if histfile:
+        with open(histfile, 'w') as f:
+            for cmd in command_history:
+                f.write(cmd + '\n')
+
 # Shell loop
 if __name__ == '__main__':
+    load_history_from_file()
+    atexit.register(save_history_to_file)
     setup_readline()
     while True:
         try:

@@ -101,7 +101,7 @@ def setup_readline():
     readline.set_completer_delims(' \t\n`!@#$%^&*()=+[{]}\\|;:\'",<>?')
     readline.parse_and_bind('set show-all-if-ambiguous off')
     readline.parse_and_bind('set completion-query-items -1')
-
+    readline.set_auto_history(False)
 
 class BuiltIn:
     def execute(self, args: str = ""):
@@ -490,6 +490,7 @@ if __name__ == '__main__':
             input_str = input("$ ").strip()
             if not input_str:
                 continue
+            readline.add_history(input_str)
             command_history.append(input_str)
             
             if '|' in input_str:

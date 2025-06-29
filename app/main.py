@@ -198,16 +198,46 @@ class TypeExplain(BuiltIn):
 class History(BuiltIn):
     def execute(self, args: str = ""):
         global command_history
-        if args.strip():
-            n = int(args.strip())
-            histories = command_history[-n:]
-            start_index = len(command_history) - n + 1
+        if not args.strip():
+            self.show_history(command_history, 1)
+            return
+        
+        args_list = shlex.split(args.strip())
+        if args_list[0] == '-r':
+            self.read_history_file(args_list[1])
+        elif args_list[0] == '-w':
+            self.write_history_file(args_list[1])
+        elif args_list[0] == '-a':
+            self.append_history_file(args_list[1])
         else:
-            histories = command_history
-            start_index = 1
+            n = int(args_list[0])
+            histories = command_history[-n:]
+            start_index = len(command_history) -n + 1
+            self.show_history(histories, start_index)
 
+    def show_history(self, histories, start_index):
         for i, cmd in enumerate(histories, start_index):
             print(f"    {i}  {cmd}")
+
+    def read_history_file(self, filename):
+        global command_history
+        with open(filename, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    command_history.append(line)
+                    readline.add_history(line)
+
+    def write_history_file(self, filename):
+        with open(filename, 'w') as f:
+            for cmd in command_history:
+                f.write(cmd + '\n')
+
+
+    def append_history_file(self, filename):
+        with open(filename, 'a') as f:
+            for cmd in command_history:
+                f.write(cmd + '\n')
 
     def __str__(self):
         return "history is a shell builtin"

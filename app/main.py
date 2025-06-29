@@ -238,6 +238,7 @@ class History(BuiltIn):
         with open(filename, 'a') as f:
             for cmd in command_history:
                 f.write(cmd + '\n')
+        command_history.clear()
 
     def __str__(self):
         return "history is a shell builtin"
